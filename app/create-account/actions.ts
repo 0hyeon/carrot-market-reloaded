@@ -1,15 +1,10 @@
 "use server";
 import bcrypt from "bcrypt";
-import {
-  PASSWORD_MIN_LENGTH,
-  PASSWORD_REGEX,
-  PASSWORD_REGEX_ERROR,
-} from "@/lib/constants";
+import { PASSWORD_MIN_LENGTH } from "@/lib/constants";
 import db from "@/lib/db";
 import { z } from "zod";
-import { getIronSession } from "iron-session";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import getSession from "@/lib/session";
 const checkUsername = (username: string) => !username.includes("potato");
 const checkPasswords = ({
   password,
@@ -52,21 +47,57 @@ const formSchema = z
       //.min(3, "Way too short!!!")
       //.max(10, "That is too looooooong!!")
       .toLowerCase()
-      .trim()
-      // .transform((username) => `fuck ${username} you`)
-      // .refine(checkUsername, "NO potatoes allowed!")
-      .refine(checkUniqueUsername, "This is alreday taken!"),
-    email: z
-      .string()
-      .email()
-      .toLowerCase()
-      .refine(
-        checkUniqueEmail,
-        "There is account already registered with taht email."
-      ),
+      .trim(),
+    // .transform((username) => `fuck ${username} you`)
+    // .refine(checkUsername, "NO potatoes allowed!")
+    // .refine(checkUniqueUsername, "This is alreday taken!"),
+    email: z.string().email().toLowerCase(),
+    // .refine(
+    //   checkUniqueEmail,
+    //   "There is account already registered with taht email."
+    // ),
     password: z.string().min(PASSWORD_MIN_LENGTH),
     // .regex(PASSWORD_REGEX, PASSWORD_REGEX_ERROR),
-    confirm_password: z.string().min(4),
+    confirm_password: z.string().min(PASSWORD_MIN_LENGTH),
+  })
+
+  .superRefine(async ({ username }, ctx) => {
+    const user = await db.user.findUnique({
+      where: {
+        username,
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (user) {
+      ctx.addIssue({
+        code: "custom",
+        message: "This username is alreday taken ",
+        path: ["username"],
+        fatal: true,
+      });
+      return z.NEVER;
+    }
+  })
+  .superRefine(async ({ email }, ctx) => {
+    const user = await db.user.findUnique({
+      where: {
+        email,
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (user) {
+      ctx.addIssue({
+        code: "custom",
+        message: "This email is alreday taken ",
+        path: ["email"],
+        fatal: true,
+      });
+      return z.NEVER;
+    }
   })
   .refine(checkPasswords, {
     message: "Both passwords should be equal!",
@@ -82,7 +113,7 @@ export async function createAccount(prevState: any, formData: FormData) {
   const result = await formSchema.spa(data);
   // console.log(result);
   if (!result.success) {
-    // console.log(result.error.flatten());
+    console.log(result.error.flatten());
     return result.error.flatten();
   } else {
     const hashedPassword = await bcrypt.hash(result.data.password, 12);
@@ -96,19 +127,10 @@ export async function createAccount(prevState: any, formData: FormData) {
         id: true,
       },
     });
-    const cookie = await getIronSession(cookies(), {
-      cookieName: "delicious-karrot",
-      password: process.env.COOKIE_PASSWORD!,
-    });
-    //@ts-ignore
-    cookie.id = user.id;
-    await cookie.save();
-    // console.log(result.data);
-    //check if username is taken
-    //check if the email is already used
-    //hash password
-    //save ther user to db
-    //log ther user in
+    const session = await getSession();
+    session.id = user.id;
+    await session.save();
+
     redirect("/profile");
   }
 }

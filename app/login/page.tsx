@@ -22,14 +22,14 @@ export default function LogIn() {
           type="email"
           placeholder="Email"
           required
-          errrors={state?.fieldErrors.email}
+          errors={state?.fieldErrors.email}
         />
         <Input
           name="password"
           type="password"
           placeholder="Password"
           required
-          errrors={state?.fieldErrors.password}
+          errors={state?.fieldErrors.password}
           minLength={PASSWORD_MIN_LENGTH}
         />
         <Button text="Log In" />
