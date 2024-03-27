@@ -3,6 +3,7 @@
 import { z } from "zod";
 import validator from "validator";
 import { redirect } from "next/navigation";
+import db from "@/lib/db";
 
 const phoneSchema = z
   .string()
@@ -31,6 +32,16 @@ export async function smsLogin(prevState: ActionState, formData: FormData) {
         error: result.error.flatten(),
       };
     } else {
+      //delete previos token
+      await db.sMSToken.deleteMany({
+        where: {
+          user: {
+            phone: result.data,
+          },
+        },
+      });
+      //create token
+      //send the token using twilio
       return { token: true };
     }
   } else {
