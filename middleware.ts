@@ -20,7 +20,7 @@ export async function middleware(req: NextRequest) {
     //로그인후 세션이없고
     if (!exists) {
       //publicOnlyUrls가 허락하는 페이지 아니면,
-      return NextResponse.redirect(new URL("/", req.url));
+      // return NextResponse.redirect(new URL("/", req.url));
     }
   } else {
     //로그인후
