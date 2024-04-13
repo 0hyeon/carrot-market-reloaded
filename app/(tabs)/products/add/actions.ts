@@ -1,10 +1,76 @@
 "use server";
-export async function uploadProduct(formData: FormData) {
+
+import { z } from "zod";
+import fs from "fs/promises";
+import db from "@/lib/db";
+import getSession from "@/lib/session";
+import { redirect } from "next/navigation";
+const productSchema = z.object({
+  photo: z.string({
+    required_error: "Photo is required",
+  }),
+  title: z
+    .string({
+      required_error: "Title is required",
+    })
+    .min(1)
+    .max(50),
+  description: z.string({
+    required_error: "Description is required",
+  }),
+  price: z.coerce.number(), //coerce로 string -> number
+});
+export async function uploadProduct(_: any, formData: FormData) {
   const data = {
     photo: formData.get("photo"),
     title: formData.get("title"),
     price: formData.get("price"),
     description: formData.get("description"),
   };
+  /*서버(public)업로드*/
+  // if (data.photo instanceof File) {
+  //   const photoData = await data.photo.arrayBuffer();
+  //   await fs.appendFile(`./public/${data.photo.name}`, Buffer.from(photoData));
+  //   data.photo = `/${data.photo.name}`;
+  // }
+
+  const results = productSchema.safeParse(data);
+  if (!results.success) {
+    return results.error.flatten();
+  } else {
+    const session = await getSession();
+    if (session.id) {
+      const product = await db.product.create({
+        data: {
+          photo: results.data.photo,
+          title: results.data.title,
+          price: results.data.price,
+          description: results.data.description,
+          user: {
+            connect: {
+              id: session.id,
+            },
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+      redirect(`/products/${product.id}`);
+    }
+  }
   console.log(data);
+}
+export async function getUploadUrl() {
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/images/v2/direct_upload`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.CLOUDFLARE_API_KEY}`,
+      },
+    }
+  );
+  const data = await response.json();
+  return data;
 }
