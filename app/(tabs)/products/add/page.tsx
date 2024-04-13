@@ -1,22 +1,41 @@
 "use client";
 import Button from "@/components/button";
 import Input from "@/components/input";
-import { PhotoIcon } from "@heroicons/react/24/solid";
+import { ArrowPathIcon, PhotoIcon } from "@heroicons/react/24/solid";
 import { useState } from "react";
 import { uploadProduct } from "./actions";
+import { MB } from "@/lib/constants";
 
 export default function AddProduct() {
-  const [preview, setPreviw] = useState("");
+  const [preview, setPreview] = useState("");
+
+  /*이미지체크*/
+  const isOversizeImage = (file: File): boolean => {
+    if (file.size > 5 * MB) {
+      alert("파일 크기가 5MB를 초과했습니다.");
+      return true;
+    }
+    return false;
+  };
+  const reset = () => setPreview("");
   const onImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const {
       target: { files },
     } = event;
+    console.log(files);
     if (!files) {
       return;
     }
     const file = files[0];
-    const url = URL.createObjectURL(file);
-    setPreviw(url);
+    const allowedExtensions = ["jpg", "jpeg", "png"];
+    const fileExtension = file.name.split(".").pop()?.toLowerCase();
+    if (fileExtension && !allowedExtensions.includes(fileExtension)) {
+      alert("이미지 파일은 jpg, jpeg, 또는 png 형식이어야 합니다.");
+      return;
+    }
+    if (isOversizeImage(file)) return; // 파일 용량 체크
+    const url = URL.createObjectURL(file); // 브라우저 메모리에 임시 저장된 인풋 업로드 파일을 참조하는 가상 URL 생성
+    setPreview(url);
   };
   return (
     <div>
@@ -51,6 +70,7 @@ export default function AddProduct() {
           type="text"
         />
         <Button text="작성완료" />
+        <Button type="reset" text="초기화" onClick={reset}></Button>
       </form>
     </div>
   );
