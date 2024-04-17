@@ -1,26 +1,12 @@
 "use server";
 
-import { z } from "zod";
 import fs from "fs/promises";
 import db from "@/lib/db";
 import getSession from "@/lib/session";
 import { redirect } from "next/navigation";
-const productSchema = z.object({
-  photo: z.string({
-    required_error: "Photo is required",
-  }),
-  title: z
-    .string({
-      required_error: "Title is required",
-    })
-    .min(1)
-    .max(50),
-  description: z.string({
-    required_error: "Description is required",
-  }),
-  price: z.coerce.number(), //coerce로 string -> number
-});
-export async function uploadProduct(_: any, formData: FormData) {
+import { productSchema } from "./schema";
+
+export async function uploadProduct(formData: FormData) {
   const data = {
     photo: formData.get("photo"),
     title: formData.get("title"),
