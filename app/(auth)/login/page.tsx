@@ -10,6 +10,7 @@ import { PASSWORD_MIN_LENGTH } from "@/lib/constants";
 
 export default function LogIn() {
   const [state, dispatch] = useFormState(login, null);
+  console.log(state, dispatch);
   return (
     <div className="flex flex-col gap-10 py-8 px-6">
       <div className="flex flex-col gap-2 *:font-medium">
@@ -32,7 +33,7 @@ export default function LogIn() {
           errors={state?.fieldErrors.password}
           minLength={PASSWORD_MIN_LENGTH}
         />
-        <Button text="Log In" />
+        <Button type="submit" text="Log In" />
       </form>
 
       <SocialLogin />

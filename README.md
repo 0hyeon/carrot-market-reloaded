@@ -1,6 +1,6 @@
 # Carrot Market Reloaded
 
-<!-- ## #개발환경
+## #개발환경
 
 ---
 
@@ -911,7 +911,7 @@
        user: {
          /* SMSToken 테이블은 User 테이블과 JOIN 관계 - 데이터 생성 시 연결된 사용자 정보가 꼭 필요하다.
             connectOrCreate: 연결할 사용자 정보가 있으면 연결, 없으면 신규 사용자 정보 생성
-
+   
            * 참고: 서비스 정책 상 사용자 정보가 확실히 존재할 수밖에 없는 상황이라면
                  connectOrCreate 대신 create를 써도 충분하다 */
          connectOrCreate: {
@@ -1105,4 +1105,4 @@
      <form action={function} children=...>
                   ^^^^^^^^^^
        at stringify (<anonymous>)
-   ``` -->
+   ```
