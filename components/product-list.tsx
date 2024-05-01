@@ -1,5 +1,5 @@
 "use client";
-import { InitialProducts } from "@/app/(tabs)/products/[id]/page";
+import { InitialProducts } from "@/app/(tabs)/home/page";
 import ListProduct from "./list-product";
 import { useState } from "react";
 import { getMoreProducts } from "@/app/(tabs)/home/actions";
@@ -29,7 +29,7 @@ export default function ProductList({ initialProducts }: ProductListProps) {
       {products.map((product) => (
         <ListProduct key={product.id} {...product} />
       ))}
-      {isLastpage ? null : (
+      {/* {isLastpage ? null : (
         <button
           onClick={onLoadMoreClick}
           disabled={isLoading}
@@ -37,7 +37,7 @@ export default function ProductList({ initialProducts }: ProductListProps) {
         >
           {isLoading ? "로딩중" : "Load more"}
         </button>
-      )}
+      )} */}
     </div>
   );
 }

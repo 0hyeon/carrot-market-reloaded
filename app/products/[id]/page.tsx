@@ -5,6 +5,8 @@ import { UserIcon } from "@heroicons/react/24/solid";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { unstable_cache as nextCache, revalidateTag } from "next/cache";
+
 async function getIsOwner(userId: number) {
   const session = await getSession();
   if (session.id) {
@@ -12,6 +14,33 @@ async function getIsOwner(userId: number) {
   }
   return false;
 }
+
+const getCachedProduct = nextCache(getProduct, ["product-detail"], {
+  tags: ["product-detail"],
+});
+
+export async function generateMetadata({ params }: { params: { id: string } }) {
+  const product = await getCachedProductTitle(Number(params.id));
+  return {
+    title: product?.title,
+  };
+}
+export async function getProductTitle(id: number) {
+  const product = db.product.findUnique({
+    where: {
+      id,
+    },
+    select: {
+      title: true,
+    },
+  });
+  return product;
+}
+
+const getCachedProductTitle = nextCache(getProductTitle, ["product-title"], {
+  tags: ["product-title"],
+});
+
 export async function getProduct(id: number) {
   const product = db.product.findUnique({
     where: {
@@ -39,13 +68,16 @@ export default async function ProductDetail({
     return notFound();
   }
 
-  const product = await getProduct(id);
+  const product = await getCachedProduct(id);
 
   if (!product) {
     return notFound();
   }
-  const isOwner = await getIsOwner(product.userId);
-
+  const isOwner = await getIsOwner(product.userId); //해당 태그만 새로고침
+  const revalidate = async () => {
+    "use server";
+    revalidateTag("product-title"); //next cache의 세번째인자 tags 에 해당 문자열있으면 getCachedProductTitle 가 재할당
+  };
   return (
     <div>
       <div className="relative aspect-square">
@@ -82,7 +114,11 @@ export default async function ProductDetail({
           {formatToWon(product.price)}원
         </span>
         {isOwner ? (
-          <button className="bg-red-500 px-5 py-2.5 rounded-md text-white font-semibold"></button>
+          <form action={revalidate}>
+            <button className="bg-red-500 px-5 py-2.5 rounded-md text-white font-semibold">
+              Revalidate title cache
+            </button>
+          </form>
         ) : null}
         <Link
           className="bg-orange-500 px-5 py-2.5 rounded-md text-white font-semibold"

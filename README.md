@@ -1,10 +1,34 @@
 # Carrot Market Reloaded
 
-## #개발환경
+## # 프로젝트 개요
 
 ---
 
 - node: v20.11.1
+- 디자인 패턴
+  - 앱라우트 페이지 MVVM 패턴 정의
+    - `constants.ts`: 상수 모음 [M]
+    - `types.ts`: 모델 모음 [M]
+    - `repositories.ts`: DB 소통 쿼리 계층 [M]
+      - `services.ts` 또는 `actions.ts`에서 호출
+      - 클라이언트 컴포넌트는 훅에서 직접 `repositories.ts` 함수를 호출할 수도 있다.
+    - `page.ts`: 화면 [V]. (단, `route.ts`가 있다면 단순 경유 페이지에 불과하므로 해당 파일이 없다.)
+    - `components`: `page.ts` 구성요소를 여러 컴포넌트로 분리한 경우, 자식 컴포넌트가 위치 [V]
+    - `styles`: CSS 모듈 스타일 모음 폴더 [V]
+    - `schemas.ts`: Zod 등 유효성 검사 스키마 및 타입 위치 [V]
+    - `actions.ts`: 사용자 요청에 맞는 서비스를 호출해 화면에 응답하는 계층 [VM]
+    - `services.ts`: `actions.ts`에서 호출되는 로직 계층. 로직 없으면 `repositories.ts`로 건너 뜀 [VM+]
+      - 서버 컴포넌트 전용 함수 위치 - `'use server'` 적용
+    - `hooks.ts`
+      - 클라이언트 컴포넌트 전용 함수 위치 - `'use client'` 적용
+    - `services.ts`
+      - 서비스 로직을 제외한 기타 연산 모음
+      - 의미 상, 모든 계층에서 공통으로 사용할 성격의 함수들이 위치
+      - 대부분의 공통 유틸은 `libs` 폴더 아래 존재
+  - 함수가 너무 많아지면, 파일명과 동일 폴더를 생성하고 그 하위에 여러 파일로 구분해 함수를 분류 저장한다.
+    - Ex. `services / commandServices.ts, queryServices.ts`
+  - CQRS 패턴은 굳이 무리해서 적용하지 않는다.
+- 출시 서비스가 아니므로, `Prisma`, `Debezium`, `Kafka` 조합의 데이터베이스 비동기 복제 설정은 생략한다.
 
 ## #3. Tailwind css
 
@@ -451,7 +475,7 @@
 ---
 
 1. 개념<br/>
-   [프리즈마](https://www.prisma.io/)는 대중적인 노드 기반 ORM 중 하나다.<br/>
+   [프리즈마](https://www.prisma.io/)는 대중적인 타입스크립트 지원 ORM 중 하나다.<br/>
    프리즈마 설치 전에 기본적인 DB 개발 환경은 갖춰두도록 하자. 설치 명령은 아래와 같다.
    ```shell
    yarn add prisma
@@ -650,6 +674,106 @@
 
    ```shell
    npx prisma studio
+   ```
+
+3. 로그 보기
+
+   ```javascript
+   import { PrismaClient } from "@prisma/client";
+
+   const db = new PrismaClient({
+     log: [
+       {
+         emit: "event",
+         level: "query",
+       },
+       {
+         emit: "stdout",
+         level: "error",
+       },
+       {
+         emit: "stdout",
+         level: "info",
+       },
+       {
+         emit: "stdout",
+         level: "warn",
+       },
+     ],
+   });
+
+   export default db;
+   ```
+
+   로그 형식을 지정하는 함수는 종단에서 실행될 수 없으므로, `libs/hooks.ts` 유틸로 분리
+
+   ```javascript
+   export const setQueryLog = (
+     roll: string,
+     caller: string,
+     result?: object | null
+   ) => {
+     db.$on("query", (e) => {
+       // SQL 키워드 자동 개행 및 색상 부여
+       const query = e.query
+         .toString()
+         .replace(
+           /(SELECT|UPDATE|DELETE|FROM|JOIN ON|WHERE|GROUP BY|HAVING|ORDER BY|LIMIT|OFFSET)\b/g,
+           "\n\x1b[35m$1\x1b[0m"
+         )
+         .replace(/(DESC|ASC)\b/g, "\x1b[35m$1\x1b[0m")
+         .replace(/,/g, "\n")
+         .replaceAll("`", "");
+
+       console.log(chalk.black(chalk.bgCyan(` ❖ caller: ${caller} `)));
+       console.log(chalk.black(chalk.bgCyan(` ❖ roll: ${roll} `)));
+       console.log(`${chalk.cyan("Query: ")}${query}`);
+       console.log(`${chalk.blue("Params: ")}${e.params}`);
+       console.log(
+         `${chalk.yellow("Duration: ")}${e.duration}ms ${
+           e.duration >= 2 ? chalk.red("Too Lazy") : chalk.green("Good")
+         }`
+       );
+       result && console.log(`${chalk.cyan("Result:")}`);
+       result && console.log(result);
+       console.log(chalk.black(chalk.bgCyan(` ❖ DONE! ❖ `)));
+     });
+   };
+   ```
+
+   서버 콘솔 - 예시(상품목록 더 보기)
+
+   ```shell
+    ❖ caller: getPosts
+    ❖ roll: 동네생활 포스트 목록 조회
+   Query:
+   SELECT carrot_market_reloaded.User.id
+    carrot_market_reloaded.User.username
+    carrot_market_reloaded.User.email
+    carrot_market_reloaded.User.password
+    carrot_market_reloaded.User.phone
+    carrot_market_reloaded.User.github_id
+    carrot_market_reloaded.User.avatar
+    carrot_market_reloaded.User.created_at
+    carrot_market_reloaded.User.updated_at
+   FROM carrot_market_reloaded.User
+   WHERE (carrot_market_reloaded.User.id = ? AND 1=1)
+   LIMIT ?
+   OFFSET ?
+   Params: [5,1,0]
+   Duration: 0ms Good
+   Result:
+   [
+     {
+       id: 1,
+       title: '누가 나의 GPU를 찾나요?',
+       description: '물건이 아주 실합니다!!!',
+       views: 0,
+       created_at: 2024-04-02T01:25:43.594Z,
+       _count: { comments: 0, likes: 1 }
+     }
+   ]
+    ❖ DONE! ❖
    ```
 
 ## #8. Authentication
@@ -912,7 +1036,7 @@
          /* SMSToken 테이블은 User 테이블과 JOIN 관계 - 데이터 생성 시 연결된 사용자 정보가 꼭 필요하다.
             connectOrCreate: 연결할 사용자 정보가 있으면 연결, 없으면 신규 사용자 정보 생성
    
-           * 참고: 서비스 정책 상 사용자 정보가 확실히 존재할 수밖에 없는 상황이라면
+           * 참고: 서비스 정책 상 사용자 정보가 확실히 존재할 수밖에 없는 상황이라면 
                  connectOrCreate 대신 create를 써도 충분하다 */
          connectOrCreate: {
            where: { phone: phoneValid.data },
@@ -1070,6 +1194,888 @@
    [[Prototype]]: Array(0)
    ```
 
+3. 리액트 훅 폼<br/><br/>
+
+   [리액트 훅 폼](https://react-hook-form.com/)은 `form` 유효성 검사를 더 능률적으로 사용하도록 도와주는 모듈이다.<br/><br/>
+
+   예를 들어, `react-dom`의 `usrFormState` 훅보다 더 간단하게 유효성 검사 코드를 작성할 수 있고<br/>
+   인풋 입력값을 실시간 감지해 오류 메시지로 바로 보여주는 기능 등이 있다.<br/><br/>
+
+   사용하려면 아래 두 모듈을 설치한다. 프로덕션 모드에서도 작동해야 하므로, 모두 일반 의존성으로 설치한다.<br/><br/>
+
+   ```shell
+   yarn add react-hook-form
+   ```
+
+   ```shell
+   yarn add @hookform/resolvers
+   ```
+
+   `@hookform/resolvers`는 리액트 훅 폼과 함께 사용하는 유효성 검사 모둘이며,<br/>
+   `zod` 등의 유효성 검사 모듈을 리액트 훅 폼에서 사용할 수 있도록 도와준다.<br/><br/>
+   아래는 `zod` + `react-hook-form` + `@hookform/resolver` 사용 예시
+
+   ```javascript
+   // schenas.ts
+   import { z } from "zod";
+   import { INVALID } from "@/libs/constants";
+
+   export const productScheme = z.object({
+     photo: z.string({ required_error: "사진이 필요합니다." }),
+     title: z
+       .string({ required_error: "제목이 필요합니다." })
+       .min(10, INVALID.TOO_SHORT)
+       .max(50, INVALID.TOO_LONG),
+     description: z
+       .string({ required_error: "자세한 설명이 필요합니다." })
+       .min(10, INVALID.TOO_SHORT)
+       .max(300, INVALID.TOO_LONG),
+     price: z.coerce
+       .number({ required_error: "가격이 필요합니다." })
+       .min(100, "최소 100원 이상이어야 합니다."),
+   });
+
+   export type ProductType = z.infer<typeof productScheme>;
+   ```
+
+   ```javascript
+   // hooks.ts
+   const {
+     register,
+     handleSubmit,
+     formState: { errors },
+   } = useForm < ProductType > { resolver: zodResolver(productScheme) };
+   ```
+
+   ```javascript
+   // page.ts
+   const { register } = useAddProduct();
+
+   <form
+     className="flex flex-col gap-5"
+     action={onValid}
+     onSubmit={(e) => onSubmitData(e)}
+   >
+     <Input
+       type="text"
+       placeholder="제목"
+       errors={[errors.title?.message ?? ""]}
+       required
+       {...register("title")}
+     />
+     ...
+   </form>;
+   ```
+
+   리액트 훅 폼은 `input` 요소에만 직접 적용되므로,<br/>
+   `input`을 랩핑한 커스덤 인풋 컴포넌트에 리액트 훅 폼을 적용하려면<br/>
+   반드시 부모를 `forwardRef`로 감싸 자식 인풋에 `ref` 속성을 넘겨줘야 한다.<br/><br/>
+
+   ```javascript
+   import { ForwardedRef, forwardRef, InputHTMLAttributes } from "react";
+
+   type InputProps = {
+     name: string, // 필수속성화
+     errors?: string[],
+   };
+
+   const _Input = (
+     {
+       name,
+       errors = [],
+       ...rest
+     }: InputProps & InputHTMLAttributes<HTMLInputElement>,
+     ref: ForwardedRef<HTMLInputElement> // 추가
+   ) => {
+     return (
+       <div className="flex flex-col gap-2">
+         <input
+           ref={ref}
+           name={name}
+           className="bg-transparent rounded-md w-full h-10 outline-none ring-1 focus:ring-4 transition ring-neutral-200 focus:ring-orange-500 border-none placeholder:text-neutral-400 disabled:bg-slate-300 dark:disabled:bg-slate-600 disabled:cursor-not-allowed"
+           {...rest}
+         />
+         {errors?.map((err, idx) => (
+           <span key={idx} className="text-red-500 font-medium">
+             {err}
+           </span>
+         ))}
+       </div>
+     );
+   };
+
+   export default forwardRef(_Input);
+   ```
+
+## # 12. Modal
+
+---
+
+1. 경로 가로채기(Intercepting Routes)<br/><br/>
+
+   넥스트는 [경로 가로채기](https://nextjs.org/docs/app/building-your-application/routing/intercepting-routes)라는 재미있는 기능을 제공한다.<br/><br/>
+
+   간단히 말해, 사용자가 특정 페이지로 진입하려는 순간,<br/>
+   넥스트가 그 라우팅을 중간에서 가로채 다른 라우트에 있는 페이지를 먼저 보여주는 기능이다.<br/>
+
+   - 인스타그램은 넥스트의 [병렬 라우트](https://nextjs.org/docs/app/building-your-application/routing/parallel-routes)와 [경로 가로채기](https://nextjs.org/docs/app/building-your-application/routing/intercepting-routes)로 MPA 기반의 모달 UI를 구현했다.<br/><br/>
+
+   간단히, 폴더 이름 앞에 `([가로챌 엡라우트 상대경로])`를 삽입하면 이 기능을 사용할 수 있다.<br/>
+
+   - 가로챌 엡라우트 상대경로`(..)` 지정법은 [넥스트 경로 가로채기 안내](https://nextjs.org/docs/app/building-your-application/routing/intercepting-routes) 확인<br/><br/>
+
+   가로챌 상대경로 이하 폴더 구조(라우트 경로)가 같으면<br/>
+   넥스트는 브라우저에서 해당 페이지로 진입했을 때 가로챈 쪽의 인터셉트 페이지를 먼저 보여주고<br/>
+   이 인터셉트 페이지에서 새로고침했을 때 마침내 실제 경로의 페이지가 보여지게 된다.<br/><br/>
+
+   ![intercepting_route.png](public%2Fimages%2Fintercepting_route.png)<br/><br/>
+
+2. 병렬 경로(Parallel Routes)<br/><br/>
+
+   이 기능은 레이아웃 함께 반복될 페이지를 삽입하고 특정 조건에서 해당 페이지를 불러내고자 할 때 유용하다.
+
+   - [넥스트 병렬 라우트 상세 페이지](https://nextjs.org/docs/app/building-your-application/routing/parallel-routes)<br/><br/>
+
+   병렬 경로를 적용하려면 `layout.tsx`가 위치한 같은 경로에<br/>
+   `@potato`처럼 `@`가 붙은 폴더를 생성하고 그 안에 `page.tsx` 컴포넌트를 추가한다.<br/>
+   그리고 아래처럼 `layout.tsx`에서 가져다 쓰면 된다.<br/><br/>
+
+   ```javascript
+   export default async function RootLayout({
+     children,
+     potato,
+   }: Readonly<{
+     children: React.ReactNode,
+     potato: React.ReactNode,
+   }>) {
+     return (
+       <html lang="en">
+         <body>
+           {potato} // 레이아웃 적용
+           {children}
+         </body>
+       </html>
+     );
+   }
+   ```
+
+   단, 넥스트는 파일기반 라우팅으로 작동하므로,<br/>
+   전항의 사진처럼 현재 사용자가 보는 페이지 `url`과 일치하는 곳에 위치한<br/>
+   `page.tsx`를 발견할 수 있을 때에만 오류 없이 작동한다.<br/><br/>
+
+   따라서, 하위 경로로 접속하면 `layout.tsx`에서 병렬 라우트 컴포넌트를 찾을 수 없어<br/>
+   `해당 페이지를 찾을 수 없다(404)`는 오류가 발생한다.<br/><br/>
+
+   해결법은 병렬 라우팅 위치에 `page.tsx`와 별개로 `default.tsx`도 생성해 정의하는 것이다.<br/>
+   이렇게 하면, 하위 라우트로 접속 시 `layout.tsx`가 찾을 수 없는 `page.tsx` 대신 `default.tsx`를 불러온다.<br/><br/>
+
+   `default.tsx`는 404 오류 방지를 위해 쓰는 것으로, 보통 아래처럼 만든다.<br/><br/>
+
+   ```javascript
+   const Default = () => {
+     return null;
+   };
+
+   export default Default;
+   ```
+
+   만약, 경로 가로채기 도중 데이터 패칭으로 인해 로딩 화면이 겹쳐 보일 수도 있는데,<br/>
+   이 경우, 같은 방법으로 `loading.tsx`까지 병렬 경로에 만들면 된다.<br/><br/>
+
+   ```javascript
+   const Loading = () => {
+     return null;
+   };
+
+   export default Loading;
+   ```
+
+## # 13. Caching Strategy
+
+---
+
+1. 불완전 캐시<br/><br/>
+
+   넥스트에서 제공하는 [불완전캐시(unstable_cache)](https://nextjs.org/docs/app/api-reference/functions/unstable_cache)는 불필요한 중복 API 호출이나,<br/>
+   성능최적화를 위해 무거운 연산을 미리 메모라이즈할 때 사용된다.<br/>
+   서버 컴포넌트에서 사용되는 서버사이드 useMemo() 훅 버전이라 보면 된다.<br/><br/>
+
+   불완전캐시로 불필요한 연산과 API 호출을 방지할 수 있지만,<br/>
+   서버를 재시작하지 않는 한, 실제 데이터 변경이 있음에도 초기 메모라이즈된 값만 가져오게 되므로,<br/>
+   데이터패칭 필요 시점에 반드시 캐시를 수동 갱신해야 혼란이 없다.<br/><br/>
+
+   이에, 넥스트 캐시는 다양한 캐시 갱신 옵션\*을 제공하고 있다.<br/><br/>
+
+   - 정확히 말해, 캐시는 `.next` 폴더 안에 저장된 정적 `html` 코드 상태를 의미하고,<br/>
+     캐시 갱신이란, 이 캐시 데이터 중 일부를 데이터패칭(변경)하는 방법을 설정하는 것이다.<br/><br/>
+
+   1. revalidate 옵션 설정<br/>
+      아래 코드에서는 `unstable_cache()` 세 번째 인자에<br/>
+      '콜백 최초 실행 후 60초 후 콜백 재실행' 시<br/>
+      캐시를 콜백의 새 반환값으로 갱신한다는 옵션이 붙어 있다.<br/>
+
+      ```javascript
+      import { unstable_cache as nextCache } from 'next/cache';
+      // 넥스트 캐시 사용 - unstable_cache(콜백, [전역 키], 갱신주기 옵션)
+      const getCachedProducts = nextCache(getInitialProducts, ['home-products'], {
+          revalidate: 60,
+      });
+
+      export const metadata = {
+        title: '홈',
+      };
+
+      const Products = async () => {
+        const initialProducts: InitialProducts = await getCachedProducts();
+        ...
+      ```
+
+      이 방식은 잦은 캐시 변경 시 불완전 캐시 목적을 퇴색시키므로,<br/>
+      적절한 갱신주기 설정으로 균형을 맞춰야 한다.<br/><br/>
+
+   2. revalidatePath('경로')<br/><br/>
+
+      아래는 사용자가 폼 액션으로 `revalidatePath()` 메서드를 사용해 캐시를 갱신하는 방법이다.<br/>
+      이 명령은 특정 페이지의 모든 캐시 갱신을 즉시 실행한다.
+
+      ```javascript
+      import { revalidatePath, unstable_cache as nextCache } from "next/cache";
+
+      const getCachedProducts = nextCache(getInitialProducts, [
+        "home-products",
+      ]);
+
+      const Products = async () => {
+        const initialProducts: InitialProducts = await getCachedProducts();
+
+        const revalidate = async () => {
+          "use server";
+          revalidatePath("/home");
+        };
+
+        return (
+          <div className="p-5 flex flex-col gap-5">
+            <form action={revalidate}>
+              <button>Revalidate</button>
+            </form>
+            <ProductListWrapper initialProducts={initialProducts} />
+            ...
+          </div>
+        );
+      };
+      ```
+
+      그러나 `revalidatePath('경로')`는 캐시 갱신을 허용만 할 뿐,<br/>
+      실제 화면에 보여줄 내용까지 갱신하지 않는다.<br/>
+      즉, 페이지 새로고침까지 해야 실제 변경된 캐시값을 확인할 수 있다.<br/><br/>
+
+      작동방식을 볼 때, 경로 가로채기 직후 새로고침을 통해 진입 가능한 페이지에 잘 어울린다.<br/><br/>
+
+   3. revalidateTag('태그')<br/><br/>
+
+      `revalidateTag('태그')`는 여러 캐시를 참조하고 있을 때 특정 캐시만 갱신하려 할 때 유용하다.
+
+      ```javascript
+      ...
+      import { revalidateTag, unstable_cache as nextCache } from 'next/cache';
+
+      const getCachedProduct = nextCache(getProduct, ['products-detail'], {
+        tags: ['detail', 'info'], // 캐시 식별자 태그 설정
+      });
+
+      const getCachedProductTitle = nextCache(getProductTitle, ['products-title'], {
+        tags: ['title', 'info'], // 캐시 식별자 태그 설정
+      });
+
+      export const generateMetadata = async ({ params }: { params: { id: string } }) => {
+        const product = await getCachedProductTitle(Number(params.id));
+        return {
+          title: product?.title,
+        };
+      };
+
+      const ProductDetail = async ({ params }: { params: { id: string } }) => {
+        const id = Number(params.id);
+
+        const product = await getCachedProduct(id);
+        if (!product) return notFound();
+
+        const revalidate = async () => {
+          'use server';
+          // revalidateTag('title'); // title 태그 캐시들만 갱신하고자 할 때
+          revalidateTag('info'); // info 태그 캐시들만 갱신하고자 할때
+        };
+
+        return (
+          ...
+            <div className="p-5">
+              <h1 className="text-2xl font-semibold">{product.title}</h1>
+              <p>{product.description}</p>
+            </div>
+            <form action={revalidate}>
+              {isOwner && (
+                <Button type="submit" method="delete">
+                  상품명 갱신
+                </Button>
+              )}
+            </form>
+          );
+          ...
+      };
+      ```
+
+   4. fetch cache<br/><br/>
+
+      `fetch()`는 넥스트 캐시와 연동 가능한 자동캐싱 기능이 있다.<br/>
+      아래는 `fetch()` 함수를 사용해 넥스트 캐시를 설정한 방식이다.<br/>
+
+      ```javascript
+      const getProduct = () => {
+        fetch("https://api.com", {
+          next: {
+            // revalidate: 60,
+            tags: ["hello", "info"],
+          },
+        });
+      };
+      ```
+
+      이렇게 해두면, `revalidateTag('태그')`를 통한 캐시 갱신이 가능하며,<br/>
+      앞서 설명한 그 외 캐시 갱신법 또한 모두 적용 가능하다.<br/><br/>
+
+      일반적인 DB 업데이트 직후 페이지 데이터패칭도<br/>
+      `fetch()`에 `revalidate: 0`을 적용한 것으로,<br/>
+      넥스트 캐시를 응용한 흔한 데이터패칭 방법 중 하나다.<br/><br/>
+
+2. 경로 세그먼트 구성<br/><br/>
+
+   [경로 세그먼트 구성(Route Segment Config
+   )](https://nextjs.org/docs/app/api-reference/file-conventions/route-segment-config)을 사용하면<br/>
+   `page`, `layout`, `route handler` 동작을 다양하게 구성할 수 있다.<br/><br/>
+   ![route_segment_config.png](public%2Fimages%2Froute_segment_config.png)<br/><br/>
+
+   예를 들어, 아래 코드를 전역으로 `page.tsx`에 넣어 `dynamic` 상수를 변경하면<br/>
+   해당 페이지는 새로고침때마다 불완전 캐시 설정 여부와 상관 없이<br/>
+   무조건 캐시를 강제 갱신해 동적페이지처럼 작동시킨다.<br/><br/>
+
+   ```javascript
+   export const dynamic = "force-dynamic"; // 기본값: 'auto'
+   ```
+
+   기본 캐시 갱신 방식도 아래처럼 변경 가능하다.<br/>
+   이렇게 하면, 특정 캐시만 변경해야 할 특별한 경우가 아니면<br/>
+   앞에서 설명한 굳이 `1. 불완전 캐시`를 적용할 필요가 없다.<br/><br/>
+
+   ```javascript
+   export const revalidate = 30; // 기본값: 'false'
+   ```
+
+3. 동적 파라미터
+
+   `yarn build` 명령을 사용하면, 넥스트가 각 페이지를 어떤 유형으로 빌드하는지 확인할 수 있다.<br/>
+   ![yarn_build.png](public%2Fimages%2Fyarn_build.png)<br/><br/>
+
+   맨 아래 3줄만 보면, 이런 뜻이다.<br/><br/>
+
+   - ○ (정적) 정적페이지로 사전 렌더됨
+   - ● (SSG) `getStaticProps`를 사용해 정적 `HTML`로 사전 렌더됨
+   - λ (동적) `Node.js`를 사용해 서버에서 렌더됨<br/><br/>
+
+   이 중에서 `SSG`는 지정한 정적 파라미터가 실제 있다고 가정하고<br/>
+   해당 파라미터에 대응하는 모든 페이지를 정적 페이지로 만든 것이다.<br/>
+
+   ```shell
+   ├ ● /products/[id]                       1.07 kB        97.2 kB
+   ├ /products/1
+   ├ /products/10
+   ├ /products/11
+   └ [+4 more paths]
+   ```
+
+   그리고 위 빌드는 `page.tsx`에 추가된 아래 정적 파라미터 생성 함수에 의해 실행됐다.
+
+   ```javascript
+   export const generateStaticParams = async () => {
+     const products = await getProducts(); // DB 조회 => 상품 id 목록 반환
+     return products.map((product) => ({ id: String(product.id) })); // ['1', '10', '11', ...]
+   };
+   ```
+
+   이렇게 하면, 페이지 진입마다 일일이 DB에 접촉하고 그때마다 서버사이드 렌더링할 필요 없이<br/>
+   .next 폴더 안에 미리 `yarn build` 명령으로 만들어진 정적페이지를 가져다 쓸 수 있게 된다.<br/><br/>
+
+   미리 만들어진 정적 페이지를 바로 가져다 쓸 수 있다면,<br/>
+   서버사이드 렌더링을 위해 사용자가 기다릴 필요도 없게 되고<br/>
+   굳이 스켈레톤 디자인 같은 로딩화면을 보여줄 필요도 없게 된다는 뜻이다.<br/><br/>
+
+   대신 이 방식은 HTML을 저장할 서버 공간이 그만큼 많이 필요하고<br/>
+   주기적으로 기존 캐시를 갱신하는 코드가 같은 `page.tsx` 안에 있어야 한다.<br/><br/>
+
+   어떻게 보면, `generateStaticParams()`는 DB에 새 데이터가 업로드될 때마다<br/>
+   `yarn build`를 재실행해야 할 것 같은 느낌도 들 것이다.<br/><br/>
+
+   그러나 `yarn start`를 통해 실제 프로덕션 모드로 애플리케이션을 실행하면<br/>
+   새 데이터(id)로 진입했을 때 곧바로 서버에서 이에 대응하는 새 정적 페이지를 생성하는 걸 알 수 있다.<br/><br/>
+
+   즉, 사전 랜더된 정적 페이지가 존재하면 그걸 보여주고<br/>
+   없으면, 즉시 새로 정적 페이지를 만들어(렌더링) 보여줌과 동시에<br/>
+   새 정적 페이지로 .next 폴더 아래 자동 추가 저장하고 있다는 의미다<br/><br/>
+
+   이는 넥스트 페이지별 경로 세그멘트 구성이 아래와 같이 동적 파라미터를 기본 허용하고 있는데서 기인한다.<br/>
+
+   ```javascript
+   export const dynamicParams = true;
+   ```
+
+   만약, 위 코드를 `page.tsx`에 추가하고 `false`로 상수 값을 바꿀 경우,<br/>
+   오직, 기존에 사전 렌더된 정적 페이지들만 넥스트에서 쓰게 되므로,<br/>
+   신규 데이터에 대응하는 페이지로 진입할 때 404 에러가 뜨게 된다.<br/><br/>
+
+## # 14. Optimistic Updates
+
+---
+
+1. 서버 컴포넌트 액션<br/><br/>
+
+   서버 컴포넌트는 사용자가 `form` 요소를 통해 POST 요청을 전달한다.<br/>
+   여기서는 `form action`으로 서비스 계층 함수를 주로 사용하는데,<br/>
+   서버 컴포넌트 변수는 서비스 함수의 인자로 넣어 전달할 수 없고, 강제 실행 시 오류가 발생한다.<br/><br/>
+
+   대신 아래와 같이 `formData`를 활용한 고전적인 방법으로 값을 전달할 수 있다.<br/>
+
+   ```javascript
+   <form method="POST">
+     <input type="hidden" type="postId" value={Number(id)} />
+     <button>
+       {state.isLiked ? (
+         <HandThumbUpIcon className="size-5" />
+       ) : (
+         <OutlinedHandThumbUpIcon className="size-5" />
+       )}
+       {state.isLiked ? (
+         <span> {state.likeCount}</span>
+       ) : (
+         <span>공감하기 ({state.likeCount})</span>
+       )}
+     </button>
+   </form>
+   ```
+
+   ```javascript
+   export const likePost = async (formData: FormData) => {
+     try {
+       const postId = formData.get('postId');
+       const sessionId = await getSessionId();
+       await createLike(Number(postId), sessionId!);
+       revalidateTag(`like-status-${postId}`);
+     } catch (e) {}
+   };
+   ```
+
+   요청 처리 후 화면 갱신은 이전 섹터의 넥스트 캐시를 활용한 방식대로 변경해줘야 한다.<br/><br/>
+
+   또, 화면 요소가 `form action`을 통해 일괄 변경되는 게 아니라, 일부 요소만 별개로 갱신되는 성격이라면,<br/>
+   앞서 설명한 넥스트 캐시의 `revalidateTags` 를 사용해 캐시를 분리함으로써<br/>
+   어느 한 요청이 다른 화면 요소에 영향이 가지 않도록 해야 한다.<br/><br/>
+
+2. 클라이언트 컴포넌트 - `useOptimistic`<br/><br/>
+
+   클라이언트 컴포넌트는 훅을 사용해 사용자 요청처리와 상태관리를 한다.<br/>
+   따라서, `form` 대신 버튼의 `onClick` 이벤트 핸들러를 더 많이 활용한다.<br/><br/>
+
+   특히, 리액트에서는 비동기처리와 관련해 [useOptimistic](https://ko.react.dev/reference/react/useOptimistic)이라는 실험적 훅을 제공하고 있다.<br/>
+   `useOptimistic`을 사용하면 비동기 요청 처리 도중 `pending`이 걸렸을 때<br/>
+   먼저 지정된 초기값을 대신 넣어 랜더하고, 나중에 요청이 완료되면 다시 실제 상태를 반영해 랜더할 수 있다.
+
+   ```javascript
+   const [state, reducer] = useOptimistic({ isLiked, likeCount }, (prevState) => ({
+     isLiked: !prevState.isLiked,
+     likeCount: prevState.isLiked ? prevState.likeCount - 1 : prevState.likeCount + 1,
+   }));
+
+   const onClick = async () => {
+     reducer(undefined);
+     isLiked ? await dislikePost(postId) : await likePost(postId);
+   };
+   ...
+
+   <button onClick={onClick}>
+     {state.isLiked ? (
+       <HandThumbUpIcon className="size-5" />
+     ) : (
+       <OutlinedHandThumbUpIcon className="size-5" />
+     )}
+     {state.isLiked ? (
+       <span> {state.likeCount}</span>
+     ) : (
+       <span>공감하기 ({state.likeCount})</span>
+     )}
+   </button>
+   ```
+
+   ```javascript
+   export const likePost = async (postId: number) => {
+     await new Promise((r) => setTimeout(r, 5000)); // pending test
+     try {
+       const sessionId = await getSessionId();
+       await createLike(Number(postId), sessionId!);
+       revalidateTag(`like-status-${postId}`);
+     } catch (e) {}
+   };
+   ```
+
+## # 15. Realtime Chat
+
+---
+
+1. [슈파베이스(Supabase)](https://supabase.com/)<br/><br/>
+
+   `Supabase`는 `Firebase` 대안 오픈 소스로,<br/>
+   Postgres 데이터베이스 기반으로 운영된다.<br/><br/>
+
+   파이어베이스와 마찬가지로 인증, 인스턴트 API, Edge Functions, 실시간 구독, <br/>
+   스토리지 및 벡터 임베딩 기능을 제공하며 프로젝트 구성 형태로 시작할 수 있다.<br/><br/>
+
+   슈파베이스를 이용하려면 먼저 회원가입 및 프로젝트 생성을 완료해<br/>
+   비밀번호, URL, API 키를 발급받고 환경변수로 등록한다.<br/><br/>
+   URL, API 키는 슈파베이스 접속 후 `Project Settings` > `API` 페이지에서 확인 가능하다.<br/>
+
+   ```dotenv
+   NEXT_PUBLIC_SUPERBASE_URL="슈퍼베이스 URL"
+   NEXT_PUBLIC_SUPERBASE_DB_PW="슈파베이스 DB 비밀번호"
+   NEXT_PUBLIC_SUPERBASE_PUBLIC_API_KEY="슈파베이스 공용 API 키"
+   ```
+
+   그리고 슈파베이스 라이브러리를 설치한다.<br/><br/>
+   넥스트 프로젝트는 자바스크립를 사용하므로 아래 모듈을 골라 설치하면 된다. - [참고](https://supabase.com/docs/reference/javascript/installing)<br/>
+
+   ```shell
+   yarn add @supabase/supabase-js
+   ```
+
+   여기서 구현할 실시간 채팅 기능은 슈파베이스의 브로드캐스트 서비스로<br/>
+   [공식 문서](https://supabase.com/docs/guides/realtime/broadcast)를 통해 적용하면 된다.<br/><br/>
+
+   브로드캐스트는 메시지 데이터를 DB에 기록하는 게 아니라,<br/>
+   슈파베이스 브로드케스트 코드가 입력된 주소로 접속한 모든 사용자들에게<br/>
+   웹소켓으로 입력한 메시지를 단순 공유하는 역할만 한다.<br/><br/>
+
+   메시지 데이터는 오직 MySQL DB에 기록되며,<br/>
+   실제 적용 사례는 `chat-message-list.tsx`에서 확인할 수 있다.<br/>
+
+   ```javascript
+   const channel = useRef<RealtimeChannel>();
+   ...
+
+   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+     e.preventDefault();
+
+     setMessages((prevMsg) => [
+       ...prevMsg,
+       {
+         id: Date.now(),
+         payload: message,
+         created_at: new Date(),
+         user_id: userId,
+         user: { username: 'string', avatar: 'xxxx' },
+       },
+     ]);
+
+     channel.current?.send({
+       type: 'broadcast',
+       event: 'message',
+       payload: { message },
+     });
+     setMessage('');
+   };
+   ...
+
+   useEffect(() => {
+     const client = createClient(
+       process.env.NEXT_PUBLIC_SUPERBASE_URL!,
+       process.env.NEXT_PUBLIC_SUPERBASE_PUBLIC_API_KEY!,
+     );
+     channel.current = client.channel(`room-${chatRoomId}`);
+     channel.current
+       .on('broadcast', { event: 'message' }, (payload) => {
+         console.log(payload);
+       })
+       .subscribe();
+
+       return () => {
+         channel.current?.unsubscribe(); // 채널구독 종료 - 자원 반환
+       };
+   }, [chatRoomId]);
+   ...
+   ```
+
+2. 실시간 채팅 테스트 방법<br/><br/>
+
+   크롬, 웨일, 엣지 등 서로 다른 브라우저에서 각각 다른 계정으로 로그인 할 것!<br/>
+
+   - 쿠키, 세션 스토리지, 로컬 스토리지는 브라우저를 통해 내부 저장소로 사용되는 개념
+   - 따라서, 같은 브라우저 창을 두 개 띄워두고 각각 로그인하더라도<br/>
+     쿠키는 가장 최근 접속자 정보로 갱신된다.
+
+## # 17. Next.JS Extras
+
+---
+
+1. 폰트 최적화<br/><br/>
+
+   넥스트에서는 편의 기능으로 [폰트 최적화](https://nextjs.org/docs/app/building-your-application/optimizing/fonts)를 제공한다.<br/><br/>
+
+   이 기능은 css 재정의 없이 구글 웹폰트나 폰트 파일 자원을 가져다 넥스트 프로젝트에 적용할 수 있고<br/>
+   클래스 변수 생성해 테일윈드 설정에 등록하면<br/>
+   테일윈드에서도 인텔리센스를 통해 폰트를 간편히 가져다 사용할 수 있다.<br/><br/>
+
+   적용 예제는 `@/app/layout.tsx`, `@/app/tailwind.config.ts` 파일을 참고하면 된다.<br/>
+
+   ```javascript
+   import type { Metadata } from 'next';
+   import { Roboto, Rubik_Scribble, Noto_Sans_KR, Noto_Serif_KR } from 'next/font/google';
+   import localFont from 'next/font/local';
+   import { ThemeToggle } from '@/components/theme-toggle';
+   import { ThemeProvider } from 'next-themes';
+   import './globals.css';
+
+   // const inter = Inter({ subsets: ['latin'] });
+   const roboto = Roboto({
+     subsets: ['latin'],
+     weight: ['400', '500'],
+     style: ['normal', 'italic'],
+     variable: '--roboto-text',
+   });
+   ...
+
+   const metalica = localFont({
+     src: '../public/fonts/Metalica.ttf',
+     variable: '--metalica',
+   });
+   ...
+
+   export default async function RootLayout({
+     dial,
+     children,
+   }: Readonly<{
+     dial: React.ReactNode;
+     children: React.ReactNode;
+   }>) {
+     // console.log(roboto);
+     return (
+       <html lang="en">
+         <body
+           className={`${roboto.variable} ${rubik.variable} ${nanumGothic.variable} ${metalica.variable} ${notoSansKr.variable} ${notoSerifKr.variable} bg-gray-100 dark:bg-gray-800 max-w-screen-sm mx-auto`}
+           // style={roboto.style}
+         >
+           ...
+         </body>
+       </html>
+     );
+   }
+   ```
+
+   ```javascript
+   import type { Config } from 'tailwindcss';
+
+   const config: Config = {
+     theme: {
+       extend: {
+         fontFamily: {
+           roboto: 'var(--roboto-text)',
+           rubik: 'var(--rubik-text)',
+           nanumgothic: 'var(--nanum-gothic)',
+           metalica: 'var(--metalica)',
+           notosanskr: 'var(--noto-sans-kr)',
+           notoserifkr: 'var(--noto-serif-kr)',
+         },
+       margin: {
+       tomato: '120px',
+     },
+     ...
+   };
+
+   export default config;
+   ```
+
+   폰트 사용 예제는 `@/app/extras/page.tsx`<br/>
+
+   ```javascript
+   const Extras = () => {
+     return (
+       <div className="flex flex-col gap-3 py-10">
+         <h1 className="text-6xl font-metalica">Extras!</h1>
+         <h1 className="text-6xl font-rubik">Extras!</h1>
+         <h2 className="font-roboto">So much more to learn!</h2>
+         <h2 className="font-nanumgothic">나눔고딕 폰트 샘플</h2>
+         <h2 className="font-notosanskr">
+           노토산스코리아(Noto Sans Kr) 폰트 샘플
+         </h2>
+         <h2 className="font-notoserifkr">
+           노토세리프코리아(Noto Serif Kr) 폰트 샘플
+         </h2>
+       </div>
+     );
+   };
+
+   export default Extras;
+   ```
+
+   ![extras.png](public%2Fimages%2Fextras.png)
+   <br/>
+
+2. 개인 폴더 적용<br/><br/>
+
+   넥스트의 앱라우팅은 app 폴더 하위폴더 안에<br/>
+   `page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, `404.tsx`, `route.ts`...<br/>
+   등의 파일이 있다면 사용자가 브라우저에서 해당 경로로 접속했을 때<br/>
+   넥스트는 이에 대응하는 html 파일로 응답하도록 설계돼 있다.<br/><br/>
+
+   이를 파일 기반 라우팅이라고 한다.<br/><br/>
+
+   만약, 앱라우팅 하위 폴더에 위 파일이 존재하더라도<br/>
+   넥스트가 브라우저에 응답하지 않게 하려면(404) 폴더명 앞에 '\_'를 넣어주면 된다.<br/><br/>
+
+3. 다중 동적 파라미터<br/><br/>
+
+   넥스트의 동적 라우팅은 폴더명을 `[param]`으로 지으면 자동 적용되는데,<br/>
+   아래처럼 파라미터를 한 번에 여러 개 전달하는 것도 가능하게 하려면 `[...param]`으로 변경하면 된다.<br/>
+
+   ```
+   http://localhost:3000/extras/1/2/3/4/5/6/7/8/9/10
+   ```
+
+   `@/app/extras/[...potato]` 경로로 `page.tsx` 파일을 배치하고 위 요청 시<br/>
+   `params.potato`는 모두 결합해 `12345678910` 문자열 하나로 반환된다. 배열이 아님에 주의!<br/><br/>
+
+   또한, 다중 동적 파라미터 적용 시 아래처럼 사용자의 파라미터 없는 접근은 404 처리된다.
+
+   ```
+   http://localhost:3000/extras
+   ```
+
+   이 경우에도 페이지 접근을 허용하려면 `[[...param]]`으로 변경하면 된다.<br/><br/>
+   ![multi-dynamic-route.png](public%2Fimages%2Fmulti-dynamic-route.png)<br/><br/>
+
+4. 기록<br/><br/>
+
+   넥스트는 서버 사이드에서 처리되는 사항을 기본 기록해 콘솔로 보여준다.<br/>
+   이 기록 방식 또한 커스더마이징이 가능한데, 아래처럼 설정하면 모든 fetch 요청 url이 자세히 기록된다.<br/>
+
+   ```javascript
+   /** @type {import('next').NextConfig} */
+   const nextConfig = {
+     logging: {
+       fetches: {
+         fullUrl: true,
+       }
+     },
+     ...
+   ```
+
+   아래는 첫 페이지 진입 시 `fetch`를 실행하고 캐시에 기록했으며,<br/>
+   이후 페이지 새로고침 시 재실행된 `fetch`는 캐시 기록을 건너뛰었다는 로그다.<br/>
+
+   ```shell
+   ...
+   GET /extras 200 in 30ms
+   GET /extras 200 in 26ms
+   │ GET https://nodmad-movies.nomadcoders.workers.dev/movies 200 in 1ms (cache: HIT)
+   GET /extras 200 in 533ms
+   GET /extras 200 in 519ms
+   │ GET https://nodmad-movies.nomadcoders.workers.dev/movies 404 in 473ms (cache: SKIP)
+   │  │  Cache missed reason: (cache-control: no-cache (hard refresh))
+   ```
+
+5. 보안<br/><br/>
+
+   여기서 사용된 보안 조치로는 개발모드에서 유용하게 사용될 법한 것들로<br/>
+   실험적인 리액트 함수 [experimental_taintObjectReference](https://react.dev/reference/react/experimental_taintObjectReference), [experimental_taintUniqueValue](https://react.dev/reference/react/experimental_taintUniqueValue)와<br/>
+   `server-only` 라이브러리를 적용해봤다.<br/><br/>
+
+   먼저 리액트의 보안 관련 함수를 사용하려면 넥스트 설정에 아래 내용을 추가한다.<br/>
+
+   ```javascript
+   const nextConfig = {
+     experimental: {
+       taint: true,
+     },
+     ...
+   ```
+
+   이후 아래 해킹행위를 가정한 함수에 해당 함수를 넣어준다.<br/>
+   아래 함수들은 모두 서버 컴포넌트에서 클라이언트 컴포넌트로의 데이터 전송을 감지해 화면에 오류를 띄운다.
+
+   ```javascript
+   'use server';
+
+   import { experimental_taintObjectReference, experimental_taintUniqueValue } from 'react';
+   ...
+
+   export const getHackedData = () => {
+     const keys = {
+       apiKey: '11134136',
+       secret: '32143125',
+     };
+     // error test
+     experimental_taintObjectReference('API Keys were leaked!!!', keys);
+     experimental_taintUniqueValue('Secret Key was exposed!', keys, keys.secret);
+     return keys;
+   };
+   ```
+
+   ![experimental_taintObjectReferece_message.JPG](public%2Fimages%2Fexperimental_taintObjectReferece_message.JPG)<br/>
+   ![experimental_taintUniqueValue_message.JPG](public%2Fimages%2Fexperimental_taintUniqueValue_message.JPG)<br/>
+
+   리액트에서 제공하는 위 함수들은 실험적인 기능 중 일부다.<br/>
+   이런 실험적 기능보다 완전한 형태로 도움을 받고자 한다면, server-only를 사용하는 방법이 있다.<br/>
+
+   ```javascript
+   import "server-only";
+
+   export const fetchFromAPI = async () => {
+     await fetch(".....");
+   };
+   ```
+
+   위 함수를 클라이언트 컴포넌트에서 호출하면 아래 오류가 뜬다.<br/>
+   ![server-only-error.JPG](public%2Fimages%2Fserver-only-error.JPG)<br/><br/>
+
+6. 이미지 최적화<br/><br/>
+
+   넥스트의 `Image` 컴포넌트는 느린 통신환경에서도 대응이 가능한 기능을 기본 제공한다.<br/>
+   아래는 대용량 이미지를 완전히 불러오기 전까지 `placeholder` 속성을 사용해 흐림 처리하고 있다.<br/><br/>
+
+   완전히 불러오기 전까지 다른 이미지를 대신 보여주려면<br/>
+   `placeholder`에 대체 이미지의 base64 문자열을 입력하면 된다.
+
+   ```javascript
+   <Image
+     className="rounded-xl"
+     src={heaveImg}
+     alt="heavy image"
+     placeholder="blur" // 대체 이미지의 base64 문자열 입력도 가능
+   />
+   ```
+
+   아래는 대용량 이미지를 완전히 불러오기 전까지 `blurDataURL` 속성을 사용해<br/>
+   다른 이미지를 대신 보여줌과 동시에 흐림 처리하고 있다.<br/>
+
+   ```javascript
+   import alterImgBase64Str from './contstants';
+   ...
+
+   <Image
+     className="rounded-xl"
+     src={heaveImg}
+     alt="heavy image"
+     placeholder="blur"
+     blurDataURL={alterImgBase64Str}
+   />
+   ```
+
+   제대로 확인하고 싶다면 개발자도구에서 네트워크 환경을 3G로 맞추고 테스트해보기 바란다.
+
 ## # 주의사항
 
 ---
@@ -1077,13 +2083,13 @@
 1. 넥스트에서 함수는 "use server" 선언을 하지 않는 한 클라이언트 컴포넌트를 직접 통과할 수 없다.
 
    ```javascript
-   import { removeProduct } from '@/app/products/[id]/features';
+   import { delProduct } from '@/app/home/[id]/features';
    import db from '@/libs/db';
 
    ...
    const delProduct = async () => {
      'use server';
-     await removeProduct(product.id);
+     await delProduct(product.id);
    };
 
    return (
@@ -1105,4 +2111,114 @@
      <form action={function} children=...>
                   ^^^^^^^^^^
        at stringify (<anonymous>)
+   ```
+
+2. 환경변수<br/><br/>
+
+   넥스트는 접두어로 `NEXT_PUBLIC_`를 붙이지 않으면 클라이언트 사이드에서 참조할 수 없다.<br/>
+   아래는 넥스트 프로젝트에서 서버와 클라이언트 사이드 모두 참조 가능한 환경변수 네이밍 예시다.<br/>
+
+   ```dotenv
+   NEXT_PUBLIC_CLOUDFLARE_ACCOUNT_ID="[환경변수 값]"
+   NEXT_PUBLIC_CLOUDFLARE_ACCOUNT_HASH="[환경변수 값]"
+   NEXT_PUBLIC_CLOUDFLARE_API_KEY="[환경변수 값]"
+   NEXT_PUBLIC_CLOUDFLARE_IMAGE_DELIVERY_URL="[환경변수 값]"
+   ```
+
+3. 전역 다이얼로그 사용법<br/><br/>
+
+   아래는 전역 다이얼로그를 호출하는 버튼 사용법이다.<br/>
+
+   ```javascript
+   <DialogBtn
+     dialogContent={{
+       type: "confirm",
+       message: '<div class="bg-orange-500 rounded-md">테스트입니다.</div>',
+       callback: "console.log('완료')",
+     }}
+   >
+     test
+   </DialogBtn>
+   ```
+
+   Next.JS의 앱라우팅은 파일기반 라우팅의 MPA로 구성되므로,<br/>
+   컨텍스트 API나 리덕스 같은 상태관리 라이브러리를 통해 다른 페이지로 전역 상태를 공유할 수 없다.<br/>
+   (SPA처럼 개발하면 가능하긴 하지만, 이 경우 Next.JS를 쓰는 의미가 없다.)<br/><br/>
+
+   다른 페이지간 리액트 상태 공유가 어려우므로,<br/>
+   SPA처럼 전역 다이얼로그를 루트에 랩핑하고 전역 상태 조작으로 제어가 불가하다.<br/><br/>
+
+   그 대안으로 여기서는 iron-session 암호화 쿠키를 사용해<br/>
+   표시할 메시지를 전달한다.<br/><br/>
+
+   다시 말해, 전역 상태 저장소로 쿠키를 사용하는 것이다.<br/><br/>
+
+   ```javascript
+   export const getDialogSession = () => {
+     return getIronSession<SessionDialogContent>(cookies(), {
+       cookieName: 'carrot-dialog',
+       password: process.env.NEXT_PUBLIC_COOKIE_PASSWORD!,
+     });
+   };
+
+   export const getDialogContent = async () => await getDialogSession();
+
+   export const saveDialogData = async (props: SessionDialogContent) => {
+     const { type, message, fnCode, args, nextPage } = props;
+     const dialogSession = await getDialogSession();
+     dialogSession.type = type;
+     dialogSession.message = message;
+     dialogSession.fnCode = fnCode;
+     dialogSession.args = args;
+     dialogSession.nextPage = nextPage;
+     await dialogSession.save(); // 정보 암호화 후 쿠키에 저장
+   };
+
+   export const clearDialogSession = async () => {
+     const dialogSession = await getDialogSession();
+     dialogSession.destroy();
+   };
+   ```
+
+   전역 다이얼로그에서 사용할 message 속성은<br/>
+   파싱하는 컴포넌트에서 아래 코드를 활용해 HTML 코드를 직접 사용하므로,<br/>
+   테일윈드를 적용하려면 className 대신 class 를 써야 한다.<br/>
+
+   ```javascript
+   <div dangerouslySetInnerHTML={{ __html: dialogContent.message }} />
+   ```
+
+   컨펌 시 실행할 함수는 쿠키로 전달할 수 없으므로,<br/>
+   미리 실행될 콜백들을 상수로 지정해두고 다이얼로그에서 끌어다 쓰도록 해야 한다.<br/>
+
+   ```javascript
+   export enum FnCODE {
+     RemoveProduct = 'RemoveProduct',
+   }
+
+   export const fnCodeMap = [
+     {
+       code: FnCODE.RemoveProduct,
+       fn: removeProductFromDial,
+     },
+   ];
+   ```
+
+   ```javascript
+   const reload = async (nextPage: string) => {
+     setTimeout(() => window.location.reload(), 100);
+     nextPage && router.push(nextPage);
+   };
+
+   const closeDialog = async (nextPage?: string) => {
+     nextPage ? await reload(nextPage) : router.back();
+   };
+
+   const confirm = async () => {
+     if (content.fnCode) {
+       const callback = fnCodeMap.find((e) => e.code === dialogContent.fnCode)?.fn!;
+       content.args ? await callback(content.args) : await callback();
+     }
+     await closeDialog(content.nextPage);
+   };
    ```
