@@ -1,6 +1,7 @@
+"use server";
 import db from "@/lib/db";
 import getSession from "@/lib/session";
-import { formatToWon } from "@/lib/utils";
+import { formatToWon, getProduct, getProductTitle } from "@/lib/utils";
 import { UserIcon } from "@heroicons/react/24/solid";
 import Image from "next/image";
 import Link from "next/link";
@@ -25,38 +26,10 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
     title: product?.title,
   };
 }
-export async function getProductTitle(id: number) {
-  const product = db.product.findUnique({
-    where: {
-      id,
-    },
-    select: {
-      title: true,
-    },
-  });
-  return product;
-}
 
 const getCachedProductTitle = nextCache(getProductTitle, ["product-title"], {
   tags: ["product-title"],
 });
-
-export async function getProduct(id: number) {
-  const product = db.product.findUnique({
-    where: {
-      id,
-    },
-    include: {
-      user: {
-        select: {
-          username: true,
-          avatar: true,
-        },
-      },
-    },
-  });
-  return product;
-}
 
 export default async function ProductDetail({
   params,

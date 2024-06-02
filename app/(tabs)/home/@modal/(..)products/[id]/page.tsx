@@ -1,4 +1,3 @@
-import { getProduct } from "@/app/products/[id]/page";
 import { PhotoIcon, XMarkIcon } from "@heroicons/react/24/solid";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -8,6 +7,7 @@ import {
   TitleBox,
   UserInfo,
 } from "@/app/(tabs)/home/@modal/(..)products/[id]/components";
+import { getProduct } from "@/lib/utils";
 
 export default async function Modal({ params }: { params: { id: string } }) {
   const product = await getProduct(Number(params.id));

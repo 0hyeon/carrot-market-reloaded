@@ -1,4 +1,4 @@
-import { ActionState, FormState } from "@/app/sms/types";
+import { ActionState, FormState } from "./types";
 
 export const initialState: ActionState = {
   token: false,
