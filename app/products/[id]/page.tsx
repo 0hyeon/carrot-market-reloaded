@@ -9,10 +9,10 @@ import { notFound } from "next/navigation";
 import { unstable_cache as nextCache, revalidateTag } from "next/cache";
 
 async function getIsOwner(userId: number) {
-  const session = await getSession();
-  if (session.id) {
-    return session.id === userId;
-  }
+  // const session = await getSession();
+  // if (session.id) {
+  //   return session.id === userId;
+  // }
   return false;
 }
 
@@ -103,3 +103,6 @@ export default async function ProductDetail({
     </div>
   );
 }
+// export async function generateStaticParams(){
+  
+// }
