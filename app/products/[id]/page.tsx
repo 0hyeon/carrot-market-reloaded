@@ -6,7 +6,11 @@ import { UserIcon } from "@heroicons/react/24/solid";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { unstable_cache as nextCache, revalidateTag } from "next/cache";
+import {
+  unstable_cache as nextCache,
+  revalidatePath,
+  revalidateTag,
+} from "next/cache";
 
 async function getIsOwner(userId: number) {
   // const session = await getSession();
@@ -103,6 +107,15 @@ export default async function ProductDetail({
     </div>
   );
 }
-// export async function generateStaticParams(){
-  
-// }
+// revalidatePath("/products/4");
+export const dynamicParams = true;
+export async function generateStaticParams() {
+  const products = await db.product.findMany({
+    select: {
+      id: true,
+    },
+  });
+  return products.map((product) => ({
+    id: product.id + "",
+  }));
+}
