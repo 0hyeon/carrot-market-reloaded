@@ -1546,6 +1546,34 @@
       일반적인 DB 업데이트 직후 페이지 데이터패칭도<br/>
       `fetch()`에 `revalidate: 0`을 적용한 것으로,<br/>
       넥스트 캐시를 응용한 흔한 데이터패칭 방법 중 하나다.<br/><br/>
+   
+   4. revalidatePath + revalidateTag 전략<br/><br/>
+      `revalidatePath("/home")`와 `revalidateTag("/product-detail")`<br>
+
+      ```javascript
+      ...
+      import { revalidatePath, revalidateTag } from "next/cache";
+      const product = await db.product.create({
+        data: {
+          title: result.data.title,
+          description: result.data.description,
+          price: result.data.price,
+          photo: result.data.photo,
+          user: {
+            connect: {
+              id: session.id,
+            },
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+      revalidatePath("/home");//캐시갱신 , 리다이렉트필요
+      revalidateTag("/product-detail");//nextCache의 해당태그 캐시재할당
+      redirect(`/home/${product.id}`);//리다이렉트
+      ...
+      ```
 
 2. 경로 세그먼트 구성<br/><br/>
 
@@ -1556,6 +1584,7 @@
 
    예를 들어, 아래 코드를 전역으로 `page.tsx`에 넣어 `dynamic` 상수를 변경하면<br/>
    해당 페이지는 새로고침때마다 불완전 캐시 설정 여부와 상관 없이<br/>
+   유저가 새로고침할때마다 db호출 , 써드파티등 새로운 최신데이터를 새로고침마다 호출하고싶을때. [요청시 새로고침]<br/>
    무조건 캐시를 강제 갱신해 동적페이지처럼 작동시킨다.<br/><br/>
 
    ```javascript
@@ -1628,7 +1657,7 @@
    ```
 
    만약, 위 코드를 `page.tsx`에 추가하고 `false`로 상수 값을 바꿀 경우,<br/>
-   오직, 기존에 사전 렌더된 정적 페이지들만 넥스트에서 쓰게 되므로,<br/>
+   오직, 기존에 빌드시점에 사전 렌더된 정적 페이지들만 넥스트에서 쓰게 되므로,<br/>
    신규 데이터에 대응하는 페이지로 진입할 때 404 에러가 뜨게 된다.<br/><br/>
 
 ## # 14. Optimistic Updates
