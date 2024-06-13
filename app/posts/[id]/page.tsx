@@ -7,6 +7,8 @@ import { unstable_cache as nextCache, revalidateTag } from "next/cache";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import LikeButton from "@/components/like-button";
+import { getComments } from "./action";
+import { CommentList } from "@/components/comment-list";
 
 async function getPost(id: number) {
   try {
@@ -75,6 +77,29 @@ function getCachedLikeStatus(postId: number) {
   });
   return cachedOperation(postId);
 }
+function getCachedComments(postId: number) {
+  const cachedComments = nextCache(getComments, ["comments"], {
+    tags: [`comments-${postId}`],
+  });
+  return cachedComments(postId);
+}
+
+async function getMe() {
+  const mySession = await getSession();
+  const me = mySession.id
+    ? await db.user.findUnique({
+        where: {
+          id: mySession.id,
+        },
+        select: {
+          id: true,
+          avatar: true,
+          username: true,
+        },
+      })
+    : null;
+  return me;
+}
 
 export default async function PostDetail({
   params,
@@ -90,32 +115,41 @@ export default async function PostDetail({
     return notFound();
   }
   const { likeCount, isLiked } = await getCachedLikeStatus(id);
+  const allComments = await getCachedComments(post.id);
+  const me = await getMe();
   return (
-    <div className="p-5 text-white">
-      <div className="flex items-center gap-2 mb-2">
-        {/* <Image
-          width={28}
-          height={28}
-          className="size-7 rounded-full"
-          src={post.user.avatar!}
-          alt={post.user.username}
-        /> */}
-        <div>
-          <span className="text-sm font-semibold">{post.user.username}</span>
-          <div className="text-xs">
-            <span>{formatToTimeAgo(post.created_at.toString())}</span>
+    <div className=" text-white relative min-h-screen">
+      <div className="p-5">
+        <div className="flex items-center gap-2 mb-2">
+          <Image
+            width={28}
+            height={28}
+            className="size-7 rounded-full"
+            src={post.user.avatar ?? "/avatar.svg"}
+            alt={post.user.username}
+          />
+          <div>
+            <span className="text-sm font-semibold">{post.user.username}</span>
+            <div className="text-xs">
+              <span>{formatToTimeAgo(post.created_at.toString())}</span>
+            </div>
           </div>
         </div>
-      </div>
-      <h2 className="text-lg font-semibold">{post.title}</h2>
-      <p className="mb-5">{post.description}</p>
-      <div className="flex flex-col gap-5 items-start">
-        <div className="flex items-center gap-2 text-neutral-400 text-sm">
-          <EyeIcon className="size-5" />
-          <span>조회 {post.views}</span>
+        <h2 className="text-lg font-semibold">{post.title}</h2>
+        <p className="mb-5">{post.description}</p>
+        <div className="flex flex-col gap-5 items-start">
+          <div className="flex items-center gap-2 text-neutral-400 text-sm">
+            <EyeIcon className="size-5" />
+            <span>조회 {post.views}</span>
+          </div>
+          <LikeButton
+            postId={post.id}
+            isLiked={isLiked}
+            likeCount={likeCount}
+          />
         </div>
-        <LikeButton isLiked={isLiked} likeCount={likeCount} postId={id} />
       </div>
+      <CommentList postId={post.id} allComments={allComments} me={me} />
     </div>
   );
 }

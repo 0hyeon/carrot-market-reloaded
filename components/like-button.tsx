@@ -17,6 +17,7 @@ export default function LikeButton({
   const [state, reducerFn] = useOptimistic(
     { isLiked, likeCount },
     (previousState, payload) => ({
+      //previousState를 써도 되고 payload를 써도됨
       isLiked: !previousState.isLiked,
       likeCount: previousState.isLiked
         ? previousState.likeCount - 1
@@ -25,8 +26,9 @@ export default function LikeButton({
   ); //action이 실행되기전 유저가 봐야하는 데이터
 
   const onClick = async () => {
-    reducerFn(1000000); //payload에 쓰임 추후사용시
+    reducerFn(1000000); //payload에 쓰임 추후사용시 (useOptimistic 에 payload로 넘김 그럼 로딩중 해당 값이보임 )
     if (isLiked) {
+      // action이 백엔드에서 완료하기전에 즉시 ui업데이트 보게됨
       await dislikePost(postId);
     } else {
       await likePost(postId);
