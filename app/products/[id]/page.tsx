@@ -108,7 +108,7 @@ export default async function ProductDetail({
   );
 }
 // revalidatePath("/products/4");
-export const dynamicParams = true;//false시 build시점에 만들어놓은 페이지만 clientview ㅈprhd  
+export const dynamicParams = true; //false시 build시점에 만들어놓은 페이지만 clientview 제공
 export async function generateStaticParams() {
   const products = await db.product.findMany({
     select: {
